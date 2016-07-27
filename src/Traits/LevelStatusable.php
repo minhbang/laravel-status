@@ -2,26 +2,84 @@
 namespace Minhbang\Status\Traits;
 /**
  * Class LevelStatusable
- * Status nâng cao: chia các statuses thành các level khác nhau
- * @method \Minhbang\Status\Managers\LevelStatusManager statusManager()
+ * Model có $level và $status
+ *
+ * @property bool $enableTags
  *
  * @package Minhbang\Status
+ * @mixin \Eloquent
  */
 trait LevelStatusable
 {
     use Statusable;
 
     /**
-     * Lấy resources theo status level, có thể dùng level value|name
+     * Lấy content theo $level
      *
      * @param \Illuminate\Database\Query\Builder $query
-     * @param int|string $level
+     * @param int $level
      *
      * @return \Illuminate\Database\Query\Builder
      */
-    public function scopeStatusLevel($query, $level)
+    public function scopeLevel($query, $level)
     {
-        return $query->whereIn("{$this->table}.status", $this->statusManager()->levelStatus($level));
+        return $this->statusManager()->filterLevel($query, $level);
     }
-    
+
+    /**
+     * @param int $level
+     *
+     * @return int
+     */
+    public function countLevel($level)
+    {
+        return $this->statusManager()->countLevel($level);
+    }
+
+    /**
+     * Getter $level_title
+     *
+     * @return string
+     */
+    public function getLevelTitleAttribute()
+    {
+        return $this->statusManager()->getLevel('title', $this->levelValue());
+    }
+
+    /**
+     * @param int $level
+     *
+     * @return bool
+     */
+    public function fillLevel($level = null)
+    {
+        return $this->statusManager()->fillLevel($this, $level);
+    }
+
+
+    /**
+     * @param bool $up
+     * @param bool $timestamps
+     *
+     * @return bool
+     */
+    public function updateLevel($up = true, $timestamps = false)
+    {
+        if ($this->statusManager()->updateLevel($this, $up)) {
+            $this->timestamps = $timestamps;
+            $this->enableTags = false;
+
+            return $this->save();
+        } else {
+            return false;
+        }
+    }
+
+    /**
+     * @return int
+     */
+    public function levelValue()
+    {
+        return $this->{$this->statusManager()->getColumnName('level')};
+    }
 }

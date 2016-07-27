@@ -1,82 +1,65 @@
 <?php
 namespace Minhbang\Status\Managers;
+
+use Minhbang\User\User;
+
 /**
- * Class SimpleStatusManager
+ * Class Simple
  *
  * @package Minhbang\Status\Managers
  */
 class Simple extends StatusManager
 {
     // Đang xử lý
-    const STATUS_PROCESSING = 1;
+    const STATUS_EDITING = 1;
     // Đã xuất bản
     const STATUS_PUBLISHED = 2;
 
-    protected function allStatuses()
+    /*
+     * Định nghĩa tất cả content statuses
+     */
+    protected function defineStatuses()
     {
         return [
-            [
-                'name'   => 'processing',
-                'value'  => static::STATUS_PROCESSING,
-                'title'  => 'Processing',
-                'action' => 'Process',
-                'css'    => 'default',
-                'rule'   => [static::STATUS_PUBLISHED],
+            static::STATUS_EDITING   => [
+                'title'   => 'Editing',
+                'can'     => [
+                    'read'   => false,
+                    'update' => true,
+                    'delete' => true,
+                    'set'    => [
+                        static::STATUS_PUBLISHED => true,
+                    ],
+                ],
+                'filter'  => function (User $user) {
+                    return ['where', 'user_id', $user->id];
+                },
+                'editing' => true,
             ],
-            [
-                'name'   => 'published',
-                'value'  => static::STATUS_PUBLISHED,
-                'title'  => 'Published',
-                'action' => 'Publish',
-                'css'    => 'success',
-                'rule'   => [static::STATUS_PROCESSING],
+            static::STATUS_PUBLISHED => [
+                'title'     => 'Published',
+                'can'       => [
+                    'read'   => true,
+                    'update' => true,
+                    'delete' => true,
+                    'set'    => [
+                        static::STATUS_EDITING => true,
+                    ],
+                ],
+                'filter'    => function (User $user) {
+                    return ['where', 'user_id', $user->id];
+                },
+                'published' => true,
             ],
         ];
     }
 
     /**
-     * @return int
-     */
-    public function valueDefault()
-    {
-        return static::STATUS_PROCESSING;
-    }
-
-    /**
      * @return array
      */
-    public function valuesPublished()
+    protected function defineLevels()
     {
-        return [static::STATUS_PUBLISHED];
+        return [];
     }
 
-    /**
-     * @param int|string $status
-     *
-     * @return bool
-     */
-    public function canDelete($status)
-    {
-        return !in_array($this->statusValue($status), $this->valuesPublished());
-    }
-
-    /**
-     * @param int|string $status
-     *
-     * @return bool
-     */
-    public function canRead($status)
-    {
-        return in_array($this->statusValue($status), $this->valuesPublished());
-    }
-
-    /**
-     * @param int|string $status
-     *
-     * @return bool
-     */
-    public function canUpdate($status)
-    {
-        return !in_array($this->statusValue($status), $this->valuesPublished());
-    }
 }

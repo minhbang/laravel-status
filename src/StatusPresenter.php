@@ -23,7 +23,7 @@ trait StatusPresenter
     {
         $actions = $this->entity->statusManager()->statusActions();
         $csses = $this->entity->statusManager()->statusCsses();
-        $statuses = $this->entity->statusCan();
+        $statuses = $this->entity->availableStatuses();
         $html = '';
         foreach ($statuses as $status) {
             $html .= Html::linkButton(
@@ -86,7 +86,7 @@ trait StatusPresenter
         $statuses = $this->entity->statusManager()->statusTitles();
         $buttons = [];
         foreach ($statuses as $status => $title) {
-            $count = $this->entity->statusCount($status);
+            $count = $this->entity->countStatus($status);
             $buttons[] = [
                 str_replace('STATUS', $status, $url),
                 $title . ($count ? ' <strong class="text-danger">(' . $count . ')</strong>' : ''),

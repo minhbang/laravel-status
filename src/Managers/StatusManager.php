@@ -1,250 +1,616 @@
 <?php
 namespace Minhbang\Status\Managers;
 
+use Illuminate\Support\Collection;
+use DB;
+
 /**
  * Class StatusManager
- * Quản lý statuses của content
- * - Giá trị status nguyên dương: 1, 2, 3,...
  *
- * @package Minhbang\Status
- *
- * Danh sách các attributes, key là value
- * @method array statusNames()
- * @method array statusValues()
- * @method array statusTitles()
- * @method array statusActions()
- * @method array statusCsses()
- * @method array statusRules()
- *
- * Giá trị attribute theo $status (là value|name)
- * @method string statusName($status, $default = null)
- * @method int statusValue($status, $default = null)
- * @method string statusTitle($status, $default = null)
- * @method string statusAction($status, $default = null)
- * @method string statusCss($status, $default = null)
- * @method array statusRule($status, $default = null)
+ * @package Minhbang\Status\Managers
  */
 abstract class StatusManager
 {
     /**
-     * Các method có thể gọi public
+     * Giá trị status không hợp lệ
+     */
+    const STATUS_INVALID = -1;
+    /**
+     * Giá trị level không hợp lệ
+     */
+    const LEVEL_INVALID = -1;
+    /**
+     * @var \Eloquent
+     */
+    protected $model;
+    /**
+     * DB table name
+     *
+     * @var string
+     */
+    protected $table;
+    /**
+     * Table column names
      *
      * @var array
      */
-    protected $public_methods = ['can*', 'check*', 'value*'];
+    protected $tableColumns = [];
 
     /**
-     * Các thuộc tính của status
-     *
-     * @var array
-     */
-    protected $status_attributes = ['name', 'value', 'title', 'action', 'css', 'rule'];
-
-    /**
-     * @var \Illuminate\Support\Collection
+     * @var \Illuminate\Support\Collection;
      */
     protected $statuses;
+    /**
+     * Giá trị status editing (khi create content,...)
+     *
+     * @var int
+     */
+    protected $editingValue;
+    /**
+     * @var int
+     */
+    protected $publishedValue;
+    /**
+     * @var \Illuminate\Support\Collection;
+     */
+    protected $levels;
+    /**
+     * @var bool
+     */
+    protected $useLevel;
+    /**
+     * Giá trị status khi level up
+     *
+     * @var int
+     */
+    protected $levelUpValue;
 
     /**
-     * Định nghĩa tất cả statuses, định dạng:
+     * Giá trị status khi level down
+     *
+     * @var int
+     */
+    protected $levelDownValue;
+
+    /**
+     * Giá trị level min
+     *
+     * @var int
+     */
+    protected $minLevel;
+
+    /**
+     * Giá trị level max
+     *
+     * @var int
+     */
+    protected $maxLevel;
+
+    /**
+     * Đĩnh nghĩa tất cả content statuses
      * [
-     *     [
-     *         'name'   => string, // Status system name
-     *         'value'  => int,    // Giá trị status lưu trong DB
-     *         'title'  => string, // Tên hiển thị
-     *         'action' => string, // Tên action để chuyển sang status này
-     *         'css'    => string, // css class hiển thị status này
-     *         'rule'    => array,  // danh sách statuses mà status này có thể chuyển sang
-     *     ],
+     *      value:int => [
+     *          'title' => string,
+     *          ?'filter' => callback
+     *          ?'can' => ['action' => callback|bool,...],
+     *          ? 'default' => true,    // status mặc định
+     *          ? 'level_up' => true,   // status khi level up
+     *          ? 'level_down' => true, // status khi level down
+     *          ? 'published' => true,  // status 'đã xuất bản'
+     *      ],
      * ]
      *
      * @return array
      */
-    abstract protected function allStatuses();
+    abstract protected function defineStatuses();
 
     /**
-     * Giá trị status mặc định (khi tạo mới...)
-     *
-     * @return int
-     */
-    abstract public function valueDefault();
-
-    /**
-     * Danh sách status cho trạng thái Đã xuất bản
+     * Đĩnh nghĩa tất cả content levels:
+     * [
+     *      value:int => [
+     *          'title' => string,
+     *          'can' => ['action' => callback|bool,...],
+     *          ?'filter' => callback
+     *      ],
+     * ]
      *
      * @return array
      */
-    abstract public function valuesPublished();
+    abstract protected function defineLevels();
 
     /**
-     * User hiện tại có thể DELETE ebook này không?
+     * StatusManager constructor.
      *
-     * @param int|string $status
-     *
-     * @return bool
+     * @param string $class
      */
-    abstract public function canDelete($status);
-
-    /**
-     * User hiện tại có thể UPDATE ebook này không?
-     *
-     * @param int|string $status
-     *
-     * @return bool
-     */
-    abstract public function canUpdate($status);
-
-    /**
-     * User hiện tại có thể READ ebook này không?
-     *
-     * @param int|string $status
-     *
-     * @return bool
-     */
-    abstract public function canRead($status);
-
-    /**
-     * user() có thể thay đổi status của Resource từ $old_status thành $new_status được không?
-     *
-     * @param int|string $old_status
-     * @param int|string $new_status
-     *
-     * @return array|bool
-     */
-    public function canChange($old_status, $new_status)
+    public function __construct($class)
     {
-        if (is_null($old_status) || is_null($new_status)) {
-            return false;
+        $this->model = app($class);
+        $this->table = $this->model->getTable();
+        $this->tableColumns['status'] = $this->model->statusColumnName;
+        $this->tableColumns['user_id'] = $this->model->userIdColumnName;
+        $this->tableColumns['level'] = $this->model->levelColumnName;
+
+        $this->statuses = new Collection($this->defineStatuses());
+        $this->editingValue = $this->getKeyIf($this->statuses, 'editing');
+        $this->publishedValue = $this->getKeyIf($this->statuses, 'published');
+        abort_unless($this->editingValue && $this->publishedValue, 500, 'Invalid Statuses defined!');
+
+        $this->levels = new Collection($this->defineLevels());
+        $this->useLevel = !$this->levels->isEmpty();
+        if ($this->useLevel) {
+            $this->levelUpValue = $this->getKeyIf($this->statuses, 'level_up');
+            $this->levelDownValue = $this->getKeyIf($this->statuses, 'level_down');
+            abort_unless($this->levelUpValue && $this->levelDownValue, 500, 'Invalid Statuses defined!');
+            $keys = $this->levels->keys();
+            $this->minLevel = key($keys->first());
+            $this->maxLevel = key($keys->last());
         }
-        $allowed = $this->statuses($old_status, 'rule');
-
-        return $allowed && in_array($this->valueStatus($new_status), $allowed);
     }
 
     /**
-     * @param int|string $status
+     * @param int $status
      *
      * @return bool
      */
-    public function checkPublished($status)
+    public function has($status)
     {
-        return in_array($this->valueStatus($status), $this->valuesPublished());
+        return $status && $this->statuses->has($status);
     }
 
     /**
-     * Kiểm tra có định nghĩa $status không?
-     *
-     * @param int|string $status
-     *
-     * @return bool
-     */
-    public function checkStatus($status)
-    {
-        return $this->statuses->whereLoose(is_numeric($status) ? 'value' : 'name', $status)->count();
-    }
-
-    /**
-     * Chuyển $status name thành value
-     *
-     * @param int|string $status
-     *
      * @return int
      */
-    public function valueStatus($status)
+    public function editingValue()
     {
-        return is_numeric($status) ? (int)$status : $this->statuses((string)$status, 'value');
+        return $this->editingValue;
     }
 
     /**
-     * $status có thể value | name
+     * Các giá trị statuses trạng thái content 'đã xuất bản'
      *
-     * @param int|string $status
+     * @return array
+     */
+    public function publishedValues()
+    {
+        return $this->publishedValue;
+    }
+
+    /**
      * @param string $attribute
+     * @param int $status
      * @param mixed $default
      *
-     * @return \Illuminate\Support\Collection|array|mixed
+     * @return mixed
      */
-    protected function statuses($status = null, $attribute = null, $default = null)
+    public function get($attribute, $status, $default = null)
     {
-        if (empty($status)) {
-            return empty($attribute) ? $this->statuses : $this->statuses->pluck($attribute, 'value')->all();
-        } else {
-            return array_get(
-                $this->statuses->whereLoose(is_numeric($status) ? 'value' : 'name', $status)->first(),
-                $attribute,
-                $default
-            );
-        }
+        return $this->getAttribute($this->statuses, $attribute, $status, $default);
     }
 
+    /**
+     * Danh sách các $attribute của status
+     *
+     * @param string $attribute
+     * @param bool $key
+     *
+     * @return array
+     */
+    public function pluck($attribute = 'title', $key = true)
+    {
+        return $this->pluckAttribute($this->statuses, $attribute, $key);
+    }
 
     /**
-     * @param string $name
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param int $status
+     * @param bool $silent
+     *
+     * @return \Illuminate\Database\Query\Builder
+     */
+    public function filter($query, $status, $silent = true)
+    {
+        if (!$this->has($status)) {
+            if ($silent) {
+                $status = static::STATUS_INVALID;
+            } else {
+                abort(500, 'Status manager: invalid status!');
+            }
+        }
+        if ($filter = $this->callAttribute($this->statuses, 'filter', $status, [user()])) {
+            $query = $this->addQueryClauses($query, $filter);
+        }
+
+        return $query->where($this->getTableColumn('status'), $status);
+    }
+
+    /**
+     * @param \Illuminate\Database\Query\Builder $query
+     *
+     * @return \Illuminate\Database\Query\Builder
+     */
+    public function filterPublished($query)
+    {
+        return $query->whereIn($this->getTableColumn('status'), $this->publishedValues());
+    }
+
+    /**
+     * user() có thể thực hiện $action đối với $model
+     * - Riêng action 'set' có thêm tham số $new_status
+     * - Khi useLevel, sử dụng thuộc tính 'can' của level thay vì của status
+     *
+     * @param string $action
+     * @param mixed $model
+     * @param int $new_status
      *
      * @return bool
      */
-    protected function isPublicMethod($name)
+    public function can($action, $model, $new_status = null)
     {
-        foreach ($this->public_methods as $pattern) {
-            if (str_is($pattern, $name)) {
+        $status = $model->{$this->getColumnName('status')};
+        $level = $model->{$this->getColumnName('level')};
+
+        if ($action === 'set') {
+            if (!$this->has($new_status)) {
+                return false;
+            }
+            if ($status == $new_status) {
                 return true;
             }
         }
 
-        return false;
-    }
-
-    /**
-     * @param string $method
-     * @param string $of
-     *
-     * @return string|bool
-     */
-    protected function getMagicAttribute($method, $of)
-    {
-        return (
-            str_is("{$of}*", $method) &&
-            ($attribute = strtolower(str_singular(substr($method, strlen($of))))) &&
-            in_array($attribute, $this->{"{$of}_attributes"})
-        ) ? $attribute : false;
-    }
-
-    /**
-     * @param string $name
-     * @param string $attribute
-     * @param array $arguments
-     *
-     * @return array|\Illuminate\Support\Collection|mixed
-     */
-    protected function callMagicMethod($name, $attribute, $arguments)
-    {
-        return $this->{$name}(
-            isset($arguments[0]) ? $arguments[0] : null,
-            $attribute,
-            isset($arguments[1]) ? $arguments[1] : null
+        return $this->callAttribute(
+            $this->useLevel ? $this->levels : $this->statuses,
+            $new_status ? "can.set.{$new_status}" : "can.{$action}",
+            $this->useLevel ? $level : $status,
+            [user(), $model],
+            false
         );
     }
 
     /**
-     * @param string $name
-     * @param array $arguments
+     * $model có thể chuyển sang những statuses nào? ==> [status:int => title:string]
+     *
+     * @param $model
+     *
+     * @return array
+     */
+    public function available($model)
+    {
+        $set = $this->get('can.set', $model->{$this->getColumnName('status')}, []);
+        $available = [];
+        if ($set) {
+            foreach ($set as $value => $callback) {
+                if ($this->call($callback, [user(), $model])) {
+                    $available[$value] = $this->statuses->get($value)['title'];
+                }
+            }
+        }
+
+        return $available;
+    }
+
+    /**
+     * Đếm content có $status
+     *
+     * @param int $status
+     *
+     * @return int
+     */
+    public function count($status)
+    {
+        return DB::table($this->table)->where($this->getColumnName('status'), $status)->count();
+    }
+
+    /**
+     * Kiểm tra có phải $status 'đã xuất bản'?
+     *
+     * @param int $status
+     *
+     * @return bool
+     */
+    public function isPublished($status)
+    {
+        return $status && in_array($status, $this->publishedValues());
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return string
+     */
+    public function getTableColumn($column)
+    {
+        return "{$this->table}.{$this->getColumnName($column)}";
+    }
+
+    /**
+     * @param string $column
+     *
+     * @return string
+     */
+    public function getColumnName($column)
+    {
+        return empty($this->tableColumns[$column]) ? $column : $this->tableColumns[$column];
+    }
+
+    /**
+     * Lấy thuộc tính của $collection
+     *
+     * @param \Illuminate\Support\Collection $collection
+     * @param string $attribute
+     * @param int $id
+     * @param mixed $default
+     *
+     * @return int|mixed
+     */
+    protected function getAttribute($collection, $attribute, $id, $default = null)
+    {
+        return array_get(
+            $collection->get($id),
+            $attribute,
+            $default
+        );
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection $collection
+     * @param string $attribute
+     * @param bool $key
+     *
+     * @return array
+     */
+    protected function pluckAttribute($collection, $attribute, $key = true)
+    {
+        $attributes = $collection->pluck($attribute);
+        if ($key) {
+            $attributes = $collection->keys()->combine($attributes);
+        }
+
+        return $attributes->all();
+    }
+
+    /**
+     * Lấy key của $collection nếu thuộc tính $ifAttribute là TRUE
+     *
+     * @param \Illuminate\Support\Collection $collection
+     * @param string $ifAttribute
+     * @param mixed $default
      *
      * @return mixed
      */
-    public function __call($name, $arguments)
+    protected function getKeyIf($collection, $ifAttribute, $default = null)
     {
-        if ($attribute = $this->getMagicAttribute($name, 'status')) {
-            return $this->callMagicMethod('statuses', $attribute, $arguments);
+        $filtered = $collection->whereLoose($ifAttribute, true);
+
+        return $filtered->isEmpty() ? $default : $filtered->keys()->first();
+    }
+
+    /**
+     * @param \Illuminate\Support\Collection $collection
+     * @param string $attribute
+     * @param int $id
+     * @param array $params
+     * @param mixed $default
+     *
+     * @return mixed
+     */
+    protected function callAttribute($collection, $attribute, $id, $params = [], $default = null)
+    {
+        return $this->call($this->getAttribute($collection, $attribute, $id, $default), $params);
+    }
+
+    /**
+     * @param mixed $callback
+     * @param array $params
+     *
+     * @return mixed
+     */
+    protected function call($callback, $params = [])
+    {
+        return is_callable($callback) ? call_user_func_array($callback, $params) : $callback;
+    }
+
+    /**
+     * Add clauses to $query, clause = ['clause', 'column', ...tham số của clause...]
+     *
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param array $clauses
+     *
+     * @return \Illuminate\Database\Query\Builder
+     */
+    protected function addQueryClauses($query, $clauses)
+    {
+        if (is_string($clauses[0])) {
+            $clauses = [$clauses];
+        }
+        foreach ($clauses as $clause) {
+            abort_if(!is_array($clause), 500, 'Status manage/Add query clause: invalid clause!');
+            $method = array_shift($clause);
+            $column = array_shift($clause);
+            array_unshift($clause, $this->getTableColumn($column));
+            call_user_func_array([$query, $method], $clause);
+        }
+
+        return $query;
+    }
+
+    // LEVEL------------------------------
+    /**
+     * @param int $level
+     *
+     * @return bool
+     */
+    public function hasLevel($level)
+    {
+        return $this->levels->has($level);
+    }
+
+    /**
+     * @param mixed $model
+     * @param int $level
+     *
+     * @return bool
+     */
+    public function fillLevel($model, $level = null)
+    {
+        $column = $this->getColumnName('level');
+        $current = $model->{$column};
+        $level = is_null($level) ? $this->minLevel : $level;
+        if ($this->minLevel <= $level && $level <= $this->maxLevel) {
+            $model->{$column} = $level;
+        }
+
+        return $current != $this->{$column};
+    }
+
+
+    /**
+     * @param mixed $model
+     *
+     * @return bool
+     */
+    public function levelUp($model)
+    {
+        return $this->updateLevel($model, true);
+    }
+
+    /**
+     * @param mixed $model
+     *
+     * @return bool
+     */
+    public function levelDown($model)
+    {
+        return $this->updateLevel($model, false);
+    }
+
+    /**
+     * @param mixed $model
+     * @param bool $up
+     *
+     * @return bool
+     */
+    public function updateLevel($model, $up = true)
+    {
+        if ($this->useLevel) {
+            $level = $model->{$this->getColumnName('level')};
+            if ($this->fillLevel($model, $level + ($up ? 1 : -1))) {
+                $model->{$this->getColumnName('status')} = $up ? $this->levelUpValue : $this->levelDownValue;
+            }
+
+            return $level != $model->{$this->getColumnName('level')};
         } else {
-            return $this->isPublicMethod($name) ? call_user_func_array([$this, $name], $arguments) : null;
+            return false;
         }
     }
 
     /**
-     * StatusManager constructor.
+     * @param string $attribute
+     * @param bool $key
+     *
+     * @return array
      */
-    public function __construct()
+    public function pluckLevel($attribute = 'title', $key = true)
     {
-        $this->statuses = collect($this->allStatuses());
+        return $this->pluckAttribute($this->levels, $attribute, $key);
+    }
+
+    /**
+     * Lấy thuộc tính $attribute của $level
+     *
+     * @param string $attribute
+     * @param int $level
+     * @param mixed $default
+     *
+     * @return mixed
+     */
+    public function getLevel($attribute, $level, $default = null)
+    {
+        return $this->getAttribute($this->levels, $attribute, $level, $default);
+    }
+
+    /**
+     * user() có thể thực hiện $action của $level
+     *
+     * @param string $action
+     * @param int|string $level
+     *
+     * @return bool
+     */
+    public function canLevel($action, $level)
+    {
+        return $this->callAttribute(
+            $this->levels,
+            "can.{$action}",
+            $level,
+            [user(), $level],
+            false
+        );
+    }
+
+    /**
+     * Đếm content ở $level
+     *
+     * @param int $level
+     * @param bool $all
+     *
+     * @return int
+     */
+    public function countLevel($level, $all = false)
+    {
+        if ($this->useLevel) {
+            $query = DB::table($this->table);
+            $query = $all ?
+                $query->where($this->getColumnName('level'), $level) :
+                $this->filterLevel($query, $level);
+
+            return $query->count();
+        } else {
+            return 0;
+        }
+    }
+
+    /**
+     * @param \Illuminate\Database\Query\Builder $query
+     * @param int $level
+     * @param bool $silent
+     *
+     * @return \Illuminate\Database\Query\Builder
+     */
+    public function filterLevel($query, $level, $silent = true)
+    {
+        if (!$this->hasLevel($level)) {
+            if ($silent) {
+                $level = static::LEVEL_INVALID;
+            } else {
+                abort(500, 'Level Status manager: invalid level!');
+            }
+        }
+        if ($filter = $this->callAttribute($this->levels, 'filter', $level, [user()])) {
+            $query = $this->addQueryClauses($query, $filter);
+        }
+
+        return $query->where($this->getTableColumn('level'), $level);
+    }
+
+    /**
+     * Danh sách levels user() có thể manage, [level:int => title:string]
+     *
+     * @return array
+     */
+    public function availableLevel()
+    {
+        $levels = [];
+        if ($this->useLevel) {
+            $user = user();
+            $this->levels->each(function ($item, $level) use (&$levels, $user) {
+                if ($this->call(array_get($item, 'can.manage'), [$user])) {
+                    $levels[$level] = array_get($item, 'title');
+                }
+            });
+        }
+
+        return $levels;
     }
 }

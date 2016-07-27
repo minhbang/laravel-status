@@ -24,7 +24,7 @@ trait StatusHtml
     {
         $actions = $model->statusManager()->statusActions();
         $csses = $model->statusManager()->statusCsses();
-        $statuses = $model->statusCan();
+        $statuses = $model->availableStatuses();
         $html = '';
         foreach ($statuses as $status) {
             $html .= Html::linkButton(
@@ -53,27 +53,49 @@ trait StatusHtml
     /**
      * @param \Minhbang\Status\Traits\Statusable $model
      * @param string $url
+     * @param string $group_by
      * @param string $name
      *
      * @return string
      */
-    public function status($model, $url, $name = 'status')
+    public function status($model, $url, $group_by = null, $name = 'status')
     {
-        $statuses = $model->statusManager()->statusTitles();
+        $statuses = $model->statusManager()->statusTitles($group_by);
         $csses = $model->statusManager()->statusCsses();
-        $lists = [];
-        foreach ($statuses as $status => $title) {
-            $lists[] = [
-                'value'      => $status,
-                'text'       => $title,
-                'attributes' => [
-                    'data-url'  => str_replace('STATUS', $status, $url),
-                    'data-type' => $csses[$status],
-                ],
-            ];
+        if (!$group_by) {
+            $statuses = ['' => $statuses];
         }
-
+        $lists = [];
+        foreach ($statuses as $group => $items) {
+            if ($group) {
+                $lists[] = $this->statusOptionItem($group, $group);
+            }
+            foreach ($items as $status => $title) {
+                $lists[] = $this->statusOptionItem($status, $title, $url, $csses[$status]);
+            }
+        }
+        
         return Form::select($name, $lists, $model->status, ['class' => 'select-btngroup', 'data-size' => 'xs']);
+    }
+
+    /**
+     * @param int $status
+     * @param stirng $title
+     * @param string $url
+     * @param string $css
+     *
+     * @return array
+     */
+    protected function statusOptionItem($status, $title, $url = '#', $css = 'group')
+    {
+        return [
+            'value'      => $status,
+            'text'       => $title,
+            'attributes' => [
+                'data-url'  => str_replace('STATUS', $status, $url),
+                'data-type' => $css,
+            ],
+        ];
     }
 
     /**
@@ -91,7 +113,7 @@ trait StatusHtml
         $statuses = $model->statusManager()->statusTitles();
         $buttons = [];
         foreach ($statuses as $status => $title) {
-            $count = $model->statusCount($status);
+            $count = $model->countStatus($status);
             $buttons[] = [
                 str_replace('STATUS', $status, $url),
                 $title . ($count ? ' <strong class="text-danger">(' . $count . ')</strong>' : ''),

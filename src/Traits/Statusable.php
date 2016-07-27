@@ -2,16 +2,13 @@
 namespace Minhbang\Status\Traits;
 
 use Carbon\Carbon;
-use Status;
+//use Status;
 
 /**
  * Class Statusable
  * Trait cho Resource Model: Article, Document,...
  * - Model có property 'status' => trạng thái hiện tại
  *
- * @property string $table
- * @property int $status
- * @property string $statusManagerName
  * @property-read string $status_title
  * @package Minhbang\Status
  * @mixin \Eloquent
@@ -36,7 +33,7 @@ trait Statusable
      */
     public function scopeStatus($query, $status)
     {
-        return $query->where("{$this->table}.status", '=', $this->statusManager()->valueStatus($status));
+        return $this->statusManager()->filter($query, $status);
     }
 
     /**
@@ -46,37 +43,38 @@ trait Statusable
      */
     public function scopePublished($query)
     {
-        return $query->whereIn("{$this->table}.status", $this->statusManager()->valuesPublished());
+        return $this->statusManager()->filterPublished($query);
     }
 
     /**
-     * @param int|string $status
+     * @param int $status
      *
      * @return int
      */
-    public function statusCount($status)
+    public function countStatus($status)
     {
-        return static::where("{$this->table}.status", '=', $this->statusManager()->valueStatus($status))->count();
+        return $this->statusManager()->count($status);
     }
 
     /**
-     * @param int|string $status
+     * @param string $action
+     * @param int $status
      *
      * @return bool
      */
-    public function statusCanSetTo($status)
+    public function can($action, $status = null)
     {
-        return $this->statusManager()->canChange($this->status, $status);
+        return $this->statusManager()->can($action, $this, $status);
     }
 
     /**
-     * Model có thể chuyển sang những statuses nào?
+     * Có thể chuyển sang những statuses nào?
      *
      * @return array
      */
-    public function statusCan()
+    public function availableStatuses()
     {
-        return $this->statusManager()->statusRule($this->status, []);
+        return $this->statusManager()->available($this);
     }
 
     /**
@@ -87,14 +85,12 @@ trait Statusable
      */
     public function fillStatus($status, $default = true)
     {
-        $new_status = ($status && $this->statusCanSetTo($status)) ?
-            $this->statusManager()->valueStatus($status) :
-            ($default ? $this->statusManager()->valueDefault() : false);
-        if ($new_status) {
-            $this->status = $new_status;
+        $status = $this->can('set', $status) ? $status : ($default ? $this->statusManager()->editingValue() : false);
+        if ($status) {
+            $this->{$this->statusManager()->getColumnName('status')} = $status;
         }
 
-        return $new_status;
+        return $status;
     }
 
     /**
@@ -107,7 +103,7 @@ trait Statusable
     public function updateStatus($status, $timestamps = false, $published_at = null)
     {
         if ($this->fillStatus($status, false)) {
-            if ($published_at && $this->statusManager()->checkPublished($status)) {
+            if ($published_at && $this->statusManager()->isPublished($status)) {
                 $this->{$published_at} = Carbon::now();
             }
             $this->timestamps = $timestamps;
@@ -120,13 +116,13 @@ trait Statusable
     }
 
     /**
-     * getter $status_title
+     * Getter $status_title
      *
-     * @return string|null
+     * @return string
      */
     public function getStatusTitleAttribute()
     {
-        return is_null($this->status) ? null : $this->statusManager()->statusTitle($this->status);
+        return $this->statusManager()->get('title', $this->statusValue());
     }
 
     /**
@@ -134,6 +130,14 @@ trait Statusable
      */
     public function isPublished()
     {
-        return $this->statusManager()->checkPublished($this->status);
+        return $this->statusManager()->isPublished($this->statusValue());
+    }
+
+    /**
+     * @return int
+     */
+    public function statusValue()
+    {
+        return $this->{$this->statusManager()->getColumnName('status')};
     }
 }

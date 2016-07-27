@@ -17,14 +17,15 @@ class Status
     /**
      * @param string $name Resource class name
      *
-     * @return StatusManager
+     * @return \Minhbang\Status\StatusManager
      */
     public function of($name)
     {
         abort_unless(isset($this->managers[$name]), 500, sprintf("Unregistered '%s' status manager!", $name));
         if (is_string($this->managers[$name])) {
+            abort_unless(class_exists($name), 500, sprintf("Class '%s' not found!", $name));
             abort_unless(class_exists($this->managers[$name]), 500, sprintf("Class '%s' not found!", $this->managers[$name]));
-            $this->managers[$name] = new $this->managers[$name]();
+            $this->managers[$name] = new $this->managers[$name]($name);
         }
 
         return $this->managers[$name];
