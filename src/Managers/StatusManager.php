@@ -3,7 +3,7 @@ namespace Minhbang\Status\Managers;
 
 use Illuminate\Support\Collection;
 use DB;
-
+// TODO: Không dùng class này nữa, chuyển sang NewStatusManager
 /**
  * Class StatusManager
  *

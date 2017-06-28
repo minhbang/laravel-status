@@ -1,65 +1,52 @@
-<?php
-namespace Minhbang\Status\Managers;
+<?php namespace Minhbang\Status\Managers;
 
 use Minhbang\User\User;
+use Minhbang\User\Support\HasOwner;
+use Authority;
 
 /**
  * Class Simple
+ * Status Manager đơn giãn: 2 trạng thái (đang biên tập, đã xuất bản)
  *
  * @package Minhbang\Status\Managers
  */
-class Simple extends StatusManager
-{
-    // Đang xử lý
-    const STATUS_EDITING = 1;
-    // Đã xuất bản
-    const STATUS_PUBLISHED = 2;
-
-    /*
-     * Định nghĩa tất cả content statuses
+class Simple extends NewStatusManager {
+    /**
+     * @return string
      */
-    protected function defineStatuses()
-    {
-        return [
-            static::STATUS_EDITING   => [
-                'title'   => 'Editing',
-                'can'     => [
-                    'read'   => false,
-                    'update' => true,
-                    'delete' => true,
-                    'set'    => [
-                        static::STATUS_PUBLISHED => true,
-                    ],
-                ],
-                'filter'  => function (User $user) {
-                    return ['where', 'user_id', $user->id];
-                },
-                'editing' => true,
-            ],
-            static::STATUS_PUBLISHED => [
-                'title'     => 'Published',
-                'can'       => [
-                    'read'   => true,
-                    'update' => true,
-                    'delete' => true,
-                    'set'    => [
-                        static::STATUS_EDITING => true,
-                    ],
-                ],
-                'filter'    => function (User $user) {
-                    return ['where', 'user_id', $user->id];
-                },
-                'published' => true,
-            ],
-        ];
+    public function defaultStatus() {
+        return 'editing';
     }
 
     /**
+     *
      * @return array
      */
-    protected function defineLevels()
-    {
-        return [];
+    protected function allStatuses() {
+        return [
+            [
+                'value'   => 'editing',
+                'actions' => [
+                    'read|update|delete' => function ( $model, User $user ) {
+                        /** @var HasOwner $model */
+                        return $user && ( Authority::user( $user )->isAdmin() || ( $model && $model->isOwnedBy( $user ) ) );
+                    },
+                ],
+                'up'      => 'published',
+                'css'     => 'default',
+            ],
+            [
+                'value'   => 'published',
+                'actions' => [
+                    'read'          => true,
+                    'update|delete' => function ( $model, User $user ) {
+                        /** @var HasOwner $model */
+                        return $user && ( Authority::user( $user )->isAdmin() || ( $model && $model->isOwnedBy( $user ) ) );
+                    },
+                ],
+                'down'    => 'editing',
+                'css'     => 'success',
+            ],
+        ];
     }
-
 }

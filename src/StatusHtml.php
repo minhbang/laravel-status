@@ -1,18 +1,19 @@
 <?php
+
 namespace Minhbang\Status;
 
 use Form;
 use Html;
 
 /**
+ * Todo: không dùng trait này nữa, đưa các tính năng này vào StatusPresenter
  * Class StatusHtml
  *
  * @property-read \Minhbang\Status\Traits\Statusable $entity
  * @package Minhbang\Status
  * @mixin \Minhbang\Kit\Extensions\Model
  */
-trait StatusHtml
-{
+trait StatusHtml {
     /**
      * @param \Minhbang\Status\Traits\Statusable $model
      * @param string $url
@@ -20,17 +21,16 @@ trait StatusHtml
      *
      * @return string
      */
-    public function statusActions($model, $url, $reload = true)
-    {
+    public function statusActions( $model, $url, $reload = true ) {
         $actions = $model->statusManager()->statusActions();
         $csses = $model->statusManager()->statusCsses();
         $statuses = $model->availableStatuses();
         $html = '';
-        foreach ($statuses as $status) {
+        foreach ( $statuses as $status ) {
             $html .= Html::linkButton(
-                str_replace('STATUS', $status, $url),
+                str_replace( 'STATUS', $status, $url ),
                 $actions[$status],
-                ['type' => $csses[$status], 'size' => 'xs', 'class' => $reload ? 'post-link-normal' : 'post-link']
+                [ 'type' => $csses[$status], 'size' => 'xs', 'class' => $reload ? 'post-link-normal' : 'post-link' ]
             );
         }
 
@@ -42,8 +42,7 @@ trait StatusHtml
      *
      * @return string
      */
-    public function statusFormatted($model)
-    {
+    public function statusFormatted( $model ) {
         $statuses = $model->statusManager()->statusTitles();
         $csses = $model->statusManager()->statusCsses();
 
@@ -58,24 +57,23 @@ trait StatusHtml
      *
      * @return string
      */
-    public function status($model, $url, $group_by = null, $name = 'status')
-    {
-        $statuses = $model->statusManager()->statusTitles($group_by);
+    public function status( $model, $url, $group_by = null, $name = 'status' ) {
+        $statuses = $model->statusManager()->statusTitles( $group_by );
         $csses = $model->statusManager()->statusCsses();
-        if (!$group_by) {
-            $statuses = ['' => $statuses];
+        if ( ! $group_by ) {
+            $statuses = [ '' => $statuses ];
         }
         $lists = [];
-        foreach ($statuses as $group => $items) {
-            if ($group) {
-                $lists[] = $this->statusOptionItem($group, $group);
+        foreach ( $statuses as $group => $items ) {
+            if ( $group ) {
+                $lists[] = $this->statusOptionItem( $group, $group );
             }
-            foreach ($items as $status => $title) {
-                $lists[] = $this->statusOptionItem($status, $title, $url, $csses[$status]);
+            foreach ( $items as $status => $title ) {
+                $lists[] = $this->statusOptionItem( $status, $title, $url, $csses[$status] );
             }
         }
-        
-        return Form::select($name, $lists, $model->status, ['class' => 'select-btngroup', 'data-size' => 'xs']);
+
+        return Form::select( $name, $lists, $model->status, [ 'class' => 'select-btngroup', 'data-size' => 'xs' ] );
     }
 
     /**
@@ -86,13 +84,12 @@ trait StatusHtml
      *
      * @return array
      */
-    protected function statusOptionItem($status, $title, $url = '#', $css = 'group')
-    {
+    protected function statusOptionItem( $status, $title, $url = '#', $css = 'group' ) {
         return [
             'value'      => $status,
             'text'       => $title,
             'attributes' => [
-                'data-url'  => str_replace('STATUS', $status, $url),
+                'data-url'  => str_replace( 'STATUS', $status, $url ),
                 'data-type' => $css,
             ],
         ];
@@ -108,16 +105,15 @@ trait StatusHtml
      *
      * @return array
      */
-    public function buttons($model, $current, $url, $size = 'sm', $active = 'primary', $default = 'white')
-    {
+    public function buttons( $model, $current, $url, $size = 'sm', $active = 'primary', $default = 'white' ) {
         $statuses = $model->statusManager()->statusTitles();
         $buttons = [];
-        foreach ($statuses as $status => $title) {
-            $count = $model->countStatus($status);
+        foreach ( $statuses as $status => $title ) {
+            $count = $model->countStatus( $status );
             $buttons[] = [
-                str_replace('STATUS', $status, $url),
-                $title . ($count ? ' <strong class="text-danger">(' . $count . ')</strong>' : ''),
-                ['size' => $size, 'type' => $status == $current ? $active : $default],
+                str_replace( 'STATUS', $status, $url ),
+                $title . ( $count ? ' <strong class="text-danger">(' . $count . ')</strong>' : '' ),
+                [ 'size' => $size, 'type' => $status == $current ? $active : $default ],
             ];
         }
 

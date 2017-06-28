@@ -1,5 +1,4 @@
-<?php
-namespace Minhbang\Status;
+<?php namespace Minhbang\Status;
 
 use Form;
 use Html;
@@ -11,89 +10,92 @@ use Html;
  * @package Minhbang\Status
  * @mixin \Minhbang\Kit\Extensions\Model
  */
-trait StatusPresenter
-{
+trait StatusPresenter {
     /**
-     * @param string $url
-     * @param bool $reload
+     * Render Trạng thái
      *
      * @return string
      */
-    public function statusActions($url, $reload = true)
-    {
-        $actions = $this->entity->statusManager()->statusActions();
-        $csses = $this->entity->statusManager()->statusCsses();
-        $statuses = $this->entity->availableStatuses();
-        $html = '';
-        foreach ($statuses as $status) {
-            $html .= Html::linkButton(
-                str_replace('STATUS', $status, $url),
-                $actions[$status],
-                ['type' => $csses[$status], 'size' => 'xs', 'class' => $reload ? 'post-link-normal' : 'post-link']
-            );
-        }
-
-        return '<div class="m-b-xs">' . $html . '</div>';
+    public function status() {
+        return ( $status = $this->entity->statusManager()->get( $this->entity->status ) ) ?
+            "<span class=\"label label-{$status['css']}\">{$status['title']}</span>" : null;
     }
 
     /**
-     * @return string
-     */
-    public function statusFormatted()
-    {
-        $statuses = $this->entity->statusManager()->statusTitles();
-        $csses = $this->entity->statusManager()->statusCsses();
-
-        return "<span class=\"label label-{$csses[$this->entity->status]}\">{$statuses[$this->entity->status]}</span>";
-    }
-
-    /**
+     * Render Trạng thái có tính năng Quick Update
+     * Cho phép all giá trị status -> chỉ dùng cho quản lý cao nhất (không chạy qui trình kiểm duyệt)
+     *
      * @param string $url
      * @param string $name
+     * @param array $options
      *
      * @return string
      */
-    public function status($url, $name = 'status')
-    {
-        $statuses = $this->entity->statusManager()->statusTitles();
-        $csses = $this->entity->statusManager()->statusCsses();
+    public function statusQuickUpdate( $url, $name = 'status', $options = [] ) {
         $lists = [];
-        foreach ($statuses as $status => $title) {
+        foreach ( $this->entity->statusManager()->all() as $status ) {
             $lists[] = [
-                'value'      => $status,
-                'text'       => $title,
+                'value'      => $status['id'],
+                'text'       => $status['title'],
                 'attributes' => [
-                    'data-url'  => str_replace('STATUS', $status, $url),
-                    'data-type' => $csses[$status],
+                    'data-url'  => str_replace( 'STATUS', $status['id'], $url ),
+                    'data-type' => $status['css'],
                 ],
             ];
         }
 
-        return Form::select($name, $lists, $this->entity->status, ['class' => 'select-btngroup', 'data-size' => 'xs']);
+        return Form::select( $name, $lists, $this->entity->status, $options + [ 'class' => 'select-btngroup', 'data-size' => 'xs' ] );
     }
 
     /**
-     * @param int $current
      * @param string $url
-     * @param string $size
-     * @param string $active
-     * @param string $default
+     * @param bool $disabled
+     * @param bool $up
+     * @param array $attributes
+     * @param array $params
      *
-     * @return array
+     * @return string
      */
-    public function buttons($current, $url, $size = 'sm', $active = 'primary', $default = 'white')
-    {
-        $statuses = $this->entity->statusManager()->statusTitles();
-        $buttons = [];
-        foreach ($statuses as $status => $title) {
-            $count = $this->entity->countStatus($status);
-            $buttons[] = [
-                str_replace('STATUS', $status, $url),
-                $title . ($count ? ' <strong class="text-danger">(' . $count . ')</strong>' : ''),
-                ['size' => $size, 'type' => $status == $current ? $active : $default],
-            ];
-        }
+    public function statusButton( $url, $disabled = false, $up = true, $attributes = [], $params = [] ) {
+        if ( $next = $this->entity->statusNextInfo( $up ) ) {
+            if ( $disabled ) {
+                $url = '#';
+                mb_attributes_addclass( $attributes, 'disabled' );
+            } else {
+                if ( ! $next['to_link'] ) {
+                    $url = str_replace( 'edit_up', 'status_up', $url );
+                    mb_attributes_addclass( $attributes, 'post-link' );
+                }
+                $attributes += [ 'type' => $next['css'], 'size' => 'xs', 'icon' => false, 'raw' => false ];
+            }
 
-        return $buttons;
+            return Html::linkButton( $url, $next['to_title'], $attributes, $params );
+        } else {
+            return '';
+        }
+    }
+
+    /**
+     * @param string $url
+     * @param bool $disabled
+     * @param array $attributes
+     * @param array $params
+     *
+     * @return string
+     */
+    public function statusUpButton( $url, $disabled = false, $attributes = [], $params = [] ) {
+        return $this->statusButton( $url, $disabled, true, $attributes, $params );
+    }
+
+    /**
+     * @param string $url
+     * @param bool $disabled
+     * @param array $attributes
+     * @param array $params
+     *
+     * @return string
+     */
+    public function statusDownButton( $url, $disabled = false, $attributes = [], $params = [] ) {
+        return $this->statusButton( $url, $disabled, false, $attributes, $params );
     }
 }

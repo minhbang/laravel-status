@@ -1,4 +1,6 @@
 # Laravel Status
+* Quản lý trạng thái của Model
+* Trả lời câu hỏi: **Model** có sẳn sàng thể **User** thực hiện **Action** không?
 
 ## Install
 

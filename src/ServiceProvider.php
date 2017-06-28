@@ -2,7 +2,7 @@
 
 namespace Minhbang\Status;
 
-use Minhbang\Kit\Extensions\BaseServiceProvider;
+use Illuminate\Support\ServiceProvider as BaseServiceProvider;
 use Illuminate\Foundation\AliasLoader;
 
 /**
@@ -12,6 +12,11 @@ use Illuminate\Foundation\AliasLoader;
  */
 class ServiceProvider extends BaseServiceProvider
 {
+    public function boot()
+    {
+
+    }
+
     /**
      * Register any package services.
      *
@@ -19,16 +24,25 @@ class ServiceProvider extends BaseServiceProvider
      */
     public function register()
     {
-        $this->app['status'] = $this->app->share(
-            function () {
-                return new Status();
-            }
-        );
-        // add Category alias
+        $this->app->singleton('status', function () {
+            return new Manager();
+        });
+
+        // add Status alias
         $this->app->booting(
             function () {
                 AliasLoader::getInstance()->alias('Status', Facade::class);
             }
         );
+    }
+
+    /**
+     * Get the services provided by the provider.
+     *
+     * @return array
+     */
+    public function provides()
+    {
+        return ['status'];
     }
 }
