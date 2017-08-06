@@ -27,7 +27,7 @@ class Simple extends NewStatusManager {
             [
                 'value'   => 'editing',
                 'actions' => [
-                    'read|update|delete' => function ( $model, User $user ) {
+                    'read|update|delete' => function ( $model, $user ) {
                         /** @var HasOwner $model */
                         return $user && ( Authority::user( $user )->isAdmin() || ( $model && $model->isOwnedBy( $user ) ) );
                     },
@@ -39,7 +39,7 @@ class Simple extends NewStatusManager {
                 'value'   => 'published',
                 'actions' => [
                     'read'          => true,
-                    'update|delete' => function ( $model, User $user ) {
+                    'update|delete' => function ( $model, $user ) {
                         /** @var HasOwner $model */
                         return $user && ( Authority::user( $user )->isAdmin() || ( $model && $model->isOwnedBy( $user ) ) );
                     },
